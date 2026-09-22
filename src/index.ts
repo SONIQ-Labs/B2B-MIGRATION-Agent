@@ -7,6 +7,7 @@ import { logger } from './utils/logger';
 import migrationRoutes from './routes/migrations';
 import bicomRoutes from './routes/bicom';
 import vodiaRoutes from './routes/vodia';
+import threecxRoutes from './routes/threecx';
 import * as dotenv from 'dotenv';
 
 // Load environment variables
@@ -132,6 +133,7 @@ app.get('/health', async (req, res) => {
 app.use('/migrations', migrationRoutes);
 app.use('/bicom', bicomRoutes);
 app.use('/vodia', vodiaRoutes);
+app.use('/threecx', threecxRoutes);
 
 // 404 handler
 app.use((req, res) => {
