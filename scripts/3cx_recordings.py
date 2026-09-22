@@ -86,6 +86,11 @@ def main():
             'call_id': call_id,
             'org_id': args.org,
             'local_path': local,
+            # NB: cdr.recording_url is NOT a URL - /api/recordings/[id]/url
+            # passes it straight to GetObjectCommand as the R2 object Key in
+            # BUCKETS.RECORDINGS ('soniq-call-recordings'). Both r2_recording_key
+            # and recording_url must be set to this key or the portal shows no
+            # recording: the `calls` view does not expose r2_recording_key at all.
             'r2_key': f'recordings/{args.org}/{call_id}.wav',
             'bytes': os.path.getsize(local),
             'duration_seconds': wav_seconds(local),
