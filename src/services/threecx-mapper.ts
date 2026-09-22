@@ -150,6 +150,15 @@ export async function migrateThreeCxBackup(
     const account = ext.extension
     if (!account) continue
 
+    // org_users.extension is digits-only (enforce_extension_length trigger) and
+    // must sit inside the org's configured digit range. 3CX hot-desk pseudo
+    // extensions (HD00001) and similar would be rejected, so skip them here
+    // rather than failing the row mid-run.
+    if (!/^[0-9]+$/.test(account)) {
+      warnings.push(`ext ${account}: non-numeric (3CX pseudo/hot-desk extension) - skipped, SONIQ extensions must be digits`)
+      continue
+    }
+
     try {
       const email = ext.email?.trim().toLowerCase() || null
       const hasRealEmail = !isDummyEmail(email)
@@ -553,6 +562,14 @@ export function analyseThreeCxPayload(payload: ThreeCxPayload): ThreeCxAnalysis 
       }
     }
   }
+
+  // extension shape - SONIQ enforces digits-only plus an org digit range
+  const nonNumeric = payload.extensions.filter(e => !/^[0-9]+$/.test(e.extension))
+  if (nonNumeric.length) {
+    warnings.push(`${nonNumeric.length} non-numeric extension(s) will be skipped (SONIQ requires digits): ${nonNumeric.map(e => e.extension).join(', ')}`)
+  }
+  const digitLengths = [...new Set(payload.extensions.filter(e => /^[0-9]+$/.test(e.extension)).map(e => e.extension.length))].sort()
+  notes.push(`numeric extensions are ${digitLengths.join('/')} digit(s) - target org must have extension_min_digits/max_digits covering ${digitLengths[0]}-${digitLengths[digitLengths.length - 1]}`)
 
   // users we cannot invite
   const noEmail = payload.extensions.filter(e => isDummyEmail(e.email))
