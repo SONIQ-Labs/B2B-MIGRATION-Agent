@@ -85,6 +85,8 @@ export interface ThreeCxMigrationParams {
   inbound_trunk_id?: string
   /** import the 1075-entry company phonebook into the org directory */
   import_phonebook?: boolean
+  /** 3CX extensions to leave behind (system DNs, reseller staff, placeholders) */
+  exclude_extensions?: string[]
   dry_run?: boolean
 }
 
@@ -106,6 +108,7 @@ export async function migrateThreeCxBackup(
   params: ThreeCxMigrationParams,
 ): Promise<ThreeCxMigrationResult> {
   const { target_org_id, inbound_trunk_id, import_phonebook = false, dry_run = false } = params
+  const excluded = new Set(params.exclude_extensions || [])
 
   const payload: ThreeCxPayload =
     params.payload ?? JSON.parse(fs.readFileSync(params.payload_path!, 'utf8'))
@@ -149,6 +152,11 @@ export async function migrateThreeCxBackup(
   for (const ext of payload.extensions) {
     const account = ext.extension
     if (!account) continue
+
+    if (excluded.has(account)) {
+      logger.info(`[3CX] skip ext ${account} (${ext.display_name}) - excluded`)
+      continue
+    }
 
     // org_users.extension is digits-only (enforce_extension_length trigger) and
     // must sit inside the org's configured digit range. 3CX hot-desk pseudo
@@ -315,6 +323,11 @@ export async function migrateThreeCxBackup(
       if (dry_run) { result.queuesSynced++; continue }
 
       const memberExts = q.members.map(m => m.extension).filter(Boolean)
+      const droppedAgents = memberExts.filter(m => excluded.has(m))
+      const ringExts = memberExts.filter(m => !excluded.has(m))
+      if (droppedAgents.length) {
+        warnings.push(`queue ${q.extension} (${q.name}): dropped excluded agent(s) ${droppedAgents.join(', ')} from the ring list`)
+      }
       const ringMode =
         q.strategy === 'RingAll' ? 'simultaneous'
         : q.strategy === 'Hunt' || q.strategy === 'HuntRandomStart' ? 'sequential'
@@ -332,7 +345,7 @@ export async function migrateThreeCxBackup(
           ring_mode: ringMode,
           timeout: q.ring_timeout,
           max_wait: q.master_timeout,
-          extensions: memberExts,
+          extensions: ringExts,
           music_on_hold: q.music_on_hold || null,
           announce_position: q.announce_position,
           announce_interval: q.announce_interval,
@@ -419,6 +432,14 @@ export async function migrateThreeCxBackup(
       const callFlowId = oh?.call_flow_id || null
       const destExt = oh?.type === 'extension' ? oh.target : null
 
+      // An OOH/office-hours leg pointing at an excluded extension has nowhere
+      // to land - keep it in payload_routes but say so, loudly.
+      for (const [label, r] of [['office hours', oh], ['out of hours', ooh]] as const) {
+        if (r?.type === 'extension' && r.target && excluded.has(r.target)) {
+          warnings.push(`DID ${did.did} ${label}: points at excluded ext ${r.target} - needs a new destination`)
+        }
+      }
+
       if (!callFlowId && !destExt) {
         warnings.push(
           `DID ${did.did}: no destination on 3CX either (${JSON.stringify(did.office_hours)}) - ` +
@@ -480,7 +501,8 @@ export async function migrateThreeCxBackup(
         last_name: c.last_name || null,
         company: c.company || null,
         phone_number: c.number_e164,
-        phone_e164: c.number_e164,
+        // phone_e164 is a generated column (to_e164_uk over phone_number/
+        // phone/mobile) - writing it is rejected, so let Postgres derive it.
         email: c.email || null,
         contact_type: 'org',
         source_system: '3cx_phonebook',

@@ -45,7 +45,7 @@ router.post('/analyse', async (req: Request, res: Response) => {
 
 // POST /threecx/migrate — write the payload into a SONIQ org
 router.post('/migrate', async (req: Request, res: Response) => {
-  const { target_org_id, inbound_trunk_id, import_phonebook, dry_run, force } = req.body
+  const { target_org_id, inbound_trunk_id, import_phonebook, exclude_extensions, dry_run, force } = req.body
   if (!target_org_id) return res.status(400).json({ error: 'Missing target_org_id' })
 
   let payload: ThreeCxPayload
@@ -69,7 +69,7 @@ router.post('/migrate', async (req: Request, res: Response) => {
   // users one at a time and take minutes, so they go async.
   if (dry_run) {
     try {
-      const result = await migrateThreeCxBackup({ payload, target_org_id, inbound_trunk_id, import_phonebook, dry_run: true })
+      const result = await migrateThreeCxBackup({ payload, target_org_id, inbound_trunk_id, import_phonebook, exclude_extensions, dry_run: true })
       return res.json({ ok: true, status: 'dry_run_complete', result, analysis })
     } catch (e: any) {
       return res.status(500).json({ error: e.message })
@@ -84,7 +84,7 @@ router.post('/migrate', async (req: Request, res: Response) => {
     blockers_overridden: analysis.blockers.length ? analysis.blockers : undefined,
   })
 
-  migrateThreeCxBackup({ payload, target_org_id, inbound_trunk_id, import_phonebook, dry_run: false })
+  migrateThreeCxBackup({ payload, target_org_id, inbound_trunk_id, import_phonebook, exclude_extensions, dry_run: false })
     .then(r => logger.info(
       `[3CX] migration finished for org ${target_org_id}: ${r.status}, ` +
       `${r.extensionsSynced} exts, ${r.queuesSynced} queues, ${r.numbersSynced} DIDs, ` +

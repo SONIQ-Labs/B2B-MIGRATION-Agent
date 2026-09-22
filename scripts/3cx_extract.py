@@ -308,14 +308,17 @@ def parse(xml_bytes):
     pb = tenant.find('PhoneBookEntries')
     if pb is not None:
         for c in pb:
-            num = txt(c, 'Number') or txt(c, 'PhoneNumber')
+            # 3CX v20 stores the phonebook number in AddressNumberOrData3 for
+            # almost every entry; PhoneNumber only appears on a handful.
+            num = (txt(c, 'AddressNumberOrData3') or txt(c, 'PhoneNumber')
+                   or txt(c, 'Number') or txt(c, 'MobileNumber'))
             phonebook.append({
                 'first_name': txt(c, 'FirstName'),
                 'last_name': txt(c, 'LastName'),
-                'company': txt(c, 'Company'),
+                'company': txt(c, 'CompanyName') or txt(c, 'Company'),
                 'number': num,
                 'number_e164': e164(num),
-                'email': txt(c, 'Email'),
+                'email': txt(c, 'EmailAddress') or txt(c, 'Email'),
             })
 
     # ---- misc ----------------------------------------------------------
